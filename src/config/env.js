@@ -27,7 +27,8 @@ const env = {
     password: process.env.REDIS_PASSWORD || '',
     db: Number(process.env.REDIS_DB || 0)
   },
-  jwtSecret: required('JWT_SECRET', 'replace_me_in_production')
+  jwtSecret: required('JWT_SECRET', 'replace_me_in_production'),
+  googleClientId: process.env.GOOGLE_CLIENT_ID || ''
 };
 
 module.exports = env;
