@@ -28,7 +28,12 @@ const env = {
     db: Number(process.env.REDIS_DB || 0)
   },
   jwtSecret: required('JWT_SECRET', 'replace_me_in_production'),
-  googleClientId: process.env.GOOGLE_CLIENT_ID || ''
+  googleClientId: process.env.GOOGLE_CLIENT_ID || '',
+  masterAdmin: {
+    username: process.env.MASTER_ADMIN_USERNAME || '',
+    email: process.env.MASTER_ADMIN_EMAIL || '',
+    password: process.env.MASTER_ADMIN_PASSWORD || ''
+  }
 };
 
 module.exports = env;

@@ -1,4 +1,42 @@
 const { getPool } = require('./mysql');
+const bcrypt = require('bcryptjs');
+const env = require('../config/env');
+
+async function safeAlter(pool, sql) {
+  try {
+    await pool.execute(sql);
+  } catch (error) {
+    if (error && (error.code === 'ER_DUP_FIELDNAME' || error.code === 'ER_DUP_KEYNAME')) {
+      return;
+    }
+    throw error;
+  }
+}
+
+async function ensureMasterAdmin(pool) {
+  const { username, email, password } = env.masterAdmin;
+  if (!username || !email || !password) {
+    return;
+  }
+
+  const [rows] = await pool.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+
+  if (rows.length === 0) {
+    const passwordHash = await bcrypt.hash(password, 12);
+    await pool.execute(
+      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, "super_admin")',
+      [username, email, passwordHash]
+    );
+    console.log('[mysql] master admin created');
+    return;
+  }
+
+  await pool.execute(
+    'UPDATE users SET username = ?, role = "super_admin" WHERE id = ?',
+    [username, rows[0].id]
+  );
+  console.log('[mysql] master admin ensured');
+}
 
 async function initSchema() {
   const pool = getPool();
@@ -9,9 +47,20 @@ async function initSchema() {
       username VARCHAR(50) NOT NULL UNIQUE,
       email VARCHAR(120) NOT NULL UNIQUE,
       password_hash VARCHAR(255) NOT NULL,
+      role ENUM('user', 'admin', 'super_admin') NOT NULL DEFAULT 'user',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
   `);
+
+  await safeAlter(
+    pool,
+    "ALTER TABLE users ADD COLUMN role ENUM('user', 'admin', 'super_admin') NOT NULL DEFAULT 'user' AFTER password_hash"
+  );
+
+  await safeAlter(
+    pool,
+    'ALTER TABLE users ADD COLUMN updated_at TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP'
+  );
 
   await pool.execute(`
     CREATE TABLE IF NOT EXISTS circles (
@@ -53,6 +102,8 @@ async function initSchema() {
       [name, name]
     );
   }
+
+  await ensureMasterAdmin(pool);
 
   console.log('[mysql] schema initialized');
 }
