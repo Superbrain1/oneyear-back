@@ -1,0 +1,91 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_PORT: ${{ secrets.SERVER_PORT }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_SSH_KEY: ${{ secrets.SERVER_SSH_KEY }}
+      BACKEND_DEPLOY_PATH: ${{ secrets.BACKEND_DEPLOY_PATH }}
+      BACKEND_PM2_APP: ${{ secrets.BACKEND_PM2_APP }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard secrets
+        id: guard
+        run: |
+          set -e
+          missing=0
+          for v in SERVER_HOST SERVER_PORT SERVER_USER SERVER_SSH_KEY BACKEND_DEPLOY_PATH BACKEND_PM2_APP; do
+            if [ -z "${!v}" ]; then
+              echo "Missing secret: $v"
+              missing=1
+            fi
+          done
+          if [ "$missing" -eq 1 ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup SSH key
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          set -e
+          mkdir -p ~/.ssh
+          if printf "%s" "$SERVER_SSH_KEY" | grep -q '\\n'; then
+            printf "%b" "$SERVER_SSH_KEY" > ~/.ssh/id_ed25519
+          else
+            printf "%s" "$SERVER_SSH_KEY" > ~/.ssh/id_ed25519
+          fi
+          tr -d '\r' < ~/.ssh/id_ed25519 > ~/.ssh/id_ed25519.tmp
+          mv ~/.ssh/id_ed25519.tmp ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keygen -y -f ~/.ssh/id_ed25519 >/dev/null
+          ssh-keyscan -H -p "$SERVER_PORT" "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$SERVER_PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$SERVER_USER@$SERVER_HOST" "echo ssh-ok"
+
+      - name: Sync backend source
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          rsync -az --delete \
+            --exclude '.env' \
+            --exclude 'node_modules' \
+            --exclude '.git' \
+            -e "ssh -i ~/.ssh/id_ed25519 -p $SERVER_PORT -o StrictHostKeyChecking=yes" \
+            ./ \
+            "$SERVER_USER@$SERVER_HOST:$BACKEND_DEPLOY_PATH/"
+
+      - name: Install prod deps and restart PM2
+        if: steps.guard.outputs.ready == 'true'
+        run: |
+          ssh -i ~/.ssh/id_ed25519 -p "$SERVER_PORT" "$SERVER_USER@$SERVER_HOST" << EOF
+            set -e
+            cd "$BACKEND_DEPLOY_PATH"
+            npm install --omit=dev
+            pm2 restart "$BACKEND_PM2_APP" || pm2 start src/server.js --name "$BACKEND_PM2_APP"
+          EOF
+
+      - name: Skip notice
+        if: steps.guard.outputs.ready != 'true'
+        run: echo "Skipping backend deploy due to missing secrets"
