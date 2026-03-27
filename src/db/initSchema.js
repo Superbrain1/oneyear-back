@@ -19,10 +19,14 @@ async function ensureMasterAdmin(pool) {
     return;
   }
 
-  const [rows] = await pool.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+  const [emailRows] = await pool.execute('SELECT id FROM users WHERE email = ? LIMIT 1', [email]);
+  const [usernameRows] = await pool.execute('SELECT id FROM users WHERE username = ? LIMIT 1', [username]);
+  const passwordHash = await bcrypt.hash(password, 12);
 
-  if (rows.length === 0) {
-    const passwordHash = await bcrypt.hash(password, 12);
+  const emailUser = emailRows[0] || null;
+  const usernameUser = usernameRows[0] || null;
+
+  if (!emailUser && !usernameUser) {
     await pool.execute(
       'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, "super_admin")',
       [username, email, passwordHash]
@@ -31,9 +35,23 @@ async function ensureMasterAdmin(pool) {
     return;
   }
 
+  if (emailUser) {
+    await pool.execute(
+      'UPDATE users SET role = "super_admin", password_hash = ? WHERE id = ?',
+      [passwordHash, emailUser.id]
+    );
+
+    if (!usernameUser || usernameUser.id === emailUser.id) {
+      await pool.execute('UPDATE users SET username = ? WHERE id = ?', [username, emailUser.id]);
+    }
+
+    console.log('[mysql] master admin ensured');
+    return;
+  }
+
   await pool.execute(
-    'UPDATE users SET username = ?, role = "super_admin" WHERE id = ?',
-    [username, rows[0].id]
+    'UPDATE users SET email = ?, role = "super_admin", password_hash = ? WHERE id = ?',
+    [email, passwordHash, usernameUser.id]
   );
   console.log('[mysql] master admin ensured');
 }
