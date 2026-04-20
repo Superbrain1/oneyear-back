@@ -6,6 +6,7 @@ const { OAuth2Client } = require('google-auth-library');
 const { z } = require('zod');
 const env = require('../config/env');
 const { getPool } = require('../db/mysql');
+const { getAuthUser, requireAuth } = require('../utils/auth');
 
 const router = express.Router();
 
@@ -62,45 +63,6 @@ function makeToken(user) {
     env.jwtSecret,
     { expiresIn: '7d' }
   );
-}
-
-function parseBearerToken(req) {
-  const auth = req.headers.authorization || '';
-  if (!auth.startsWith('Bearer ')) {
-    return null;
-  }
-  return auth.slice(7);
-}
-
-async function getAuthUser(req) {
-  const token = parseBearerToken(req);
-  if (!token) {
-    return null;
-  }
-
-  try {
-    const payload = jwt.verify(token, env.jwtSecret);
-    const pool = getPool();
-    const [rows] = await pool.execute(
-      'SELECT id, username, email, role FROM users WHERE id = ? LIMIT 1',
-      [payload.userId]
-    );
-    if (rows.length === 0) {
-      return null;
-    }
-    return rows[0];
-  } catch (_error) {
-    return null;
-  }
-}
-
-async function requireAuth(req, res) {
-  const user = await getAuthUser(req);
-  if (!user) {
-    res.status(401).json({ message: '未登录或登录已过期' });
-    return null;
-  }
-  return user;
 }
 
 async function requireSuperAdmin(req, res) {
@@ -170,7 +132,21 @@ router.post('/login', async (req, res) => {
   const { password } = parsed.data;
   const pool = getPool();
   const [rows] = await pool.execute(
-    'SELECT id, username, email, password_hash FROM users WHERE email = ? OR username = ? LIMIT 1',
+    `SELECT
+      id,
+      username,
+      email,
+      password_hash,
+      role,
+      city,
+      bio,
+      level,
+      exp,
+      avatar_url,
+      banner_url
+    FROM users
+    WHERE email = ? OR username = ?
+    LIMIT 1`,
     [account, account]
   );
 
@@ -186,7 +162,21 @@ router.post('/login', async (req, res) => {
 
   const token = makeToken(user);
 
-  return res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+  return res.json({
+    token,
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      city: user.city || '',
+      bio: user.bio || '',
+      level: user.level || 1,
+      exp: user.exp || 0,
+      avatarUrl: user.avatar_url || '',
+      bannerUrl: user.banner_url || ''
+    }
+  });
 });
 
 router.post('/google', async (req, res) => {
@@ -234,7 +224,13 @@ router.post('/google', async (req, res) => {
         id: insertResult.insertId,
         username,
         email: payload.email,
-        role: 'user'
+        role: 'user',
+        city: '上海',
+        bio: 'Google 登录的新球友',
+        level: 1,
+        exp: 0,
+        avatarUrl: '',
+        bannerUrl: ''
       };
       isNewUser = true;
     }
@@ -242,7 +238,18 @@ router.post('/google', async (req, res) => {
     const token = makeToken(user);
     return res.json({
       token,
-      user: { id: user.id, username: user.username, email: user.email, role: user.role || 'user' },
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role || 'user',
+        city: user.city || '',
+        bio: user.bio || '',
+        level: user.level || 1,
+        exp: user.exp || 0,
+        avatarUrl: user.avatarUrl || user.avatar_url || '',
+        bannerUrl: user.bannerUrl || user.banner_url || ''
+      },
       isNewUser
     });
   } catch (error) {
@@ -256,7 +263,20 @@ router.get('/me', async (req, res) => {
   if (!user) {
     return;
   }
-  return res.json({ user: { id: user.id, username: user.username, email: user.email, role: user.role } });
+  return res.json({
+    user: {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      city: user.city || '',
+      bio: user.bio || '',
+      level: user.level || 1,
+      exp: user.exp || 0,
+      avatarUrl: user.avatarUrl || '',
+      bannerUrl: user.bannerUrl || ''
+    }
+  });
 });
 
 router.put('/me', async (req, res) => {
@@ -306,7 +326,23 @@ router.put('/me', async (req, res) => {
   values.push(authUser.id);
   await pool.execute(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
 
-  const [rows] = await pool.execute('SELECT id, username, email, role FROM users WHERE id = ? LIMIT 1', [authUser.id]);
+  const [rows] = await pool.execute(
+    `SELECT
+      id,
+      username,
+      email,
+      role,
+      city,
+      bio,
+      level,
+      exp,
+      avatar_url AS avatarUrl,
+      banner_url AS bannerUrl
+    FROM users
+    WHERE id = ?
+    LIMIT 1`,
+    [authUser.id]
+  );
   const user = rows[0];
   const token = makeToken(user);
   return res.json({ token, user });

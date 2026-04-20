@@ -3,6 +3,16 @@ const app = require('./app');
 const { connectMySQLWithRetry } = require('./db/mysql');
 const { createRedisClient } = require('./db/redis');
 const { initSchema } = require('./db/initSchema');
+const { reportBackendError } = require('./utils/monitoring');
+
+process.on('unhandledRejection', (error) => {
+  reportBackendError(error, { type: 'process', event: 'unhandledRejection' });
+});
+
+process.on('uncaughtException', (error) => {
+  reportBackendError(error, { type: 'process', event: 'uncaughtException' });
+  process.exit(1);
+});
 
 async function bootstrap() {
   try {
@@ -20,9 +30,11 @@ async function bootstrap() {
       } else {
         console.error('[server] listen error:', err.message);
       }
+      reportBackendError(err, { type: 'server', event: 'listen_error', port: env.port });
       process.exit(1);
     });
   } catch (error) {
+    reportBackendError(error, { type: 'server', event: 'bootstrap_failed' });
     console.error('[server] startup failed:', error);
     process.exit(1);
   }

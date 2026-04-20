@@ -13,6 +13,12 @@ function required(name, fallback) {
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
   port: Number(process.env.PORT || 3000),
+  appVersion: process.env.APP_VERSION || process.env.npm_package_version || '1.0.0',
+  appCommitSha: process.env.APP_COMMIT_SHA || '',
+  monitoring: {
+    errorWebhook: process.env.ERROR_WEBHOOK_URL || '',
+    metricsToken: process.env.METRICS_TOKEN || ''
+  },
   mysql: {
     host: required('DB_HOST', '127.0.0.1'),
     port: Number(process.env.DB_PORT || 3306),

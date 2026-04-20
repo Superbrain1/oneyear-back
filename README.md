@@ -9,6 +9,14 @@ npm install
 npm run dev
 ```
 
+## Test
+
+```bash
+npm test
+```
+
+Current `npm test` will run a backend smoke test that verifies MySQL, Redis, auth, forum bootstrap, post creation, post detail, and dashboard critical path APIs.
+
 ## Auto database connection
 
 Server startup will automatically:
