@@ -374,9 +374,9 @@ async function seedMarketplace(pool) {
 
   const [users] = await pool.execute('SELECT id, city FROM users ORDER BY id ASC LIMIT 4');
   const items = [
-    [users[2].id, '出售', '羽毛球拍', 'Yonex 88D 二代 3UG5', '9 成新', 980, users[2].city, '半年使用，无磕碰，附原装拍套。', 'active'],
-    [users[1].id, '求购', '羽毛球鞋', '求购 43 码稳定型羽毛球鞋', '8 成新以上', 420, users[1].city, '预算 400 左右，偏保护脚踝。', 'active'],
-    [users[0].id, '出售', '配件', '比赛级鹅毛球两桶', '全新', 168, users[0].city, '团购多出的两桶，支持同城面交。', 'active']
+    [users[2].id, '出售', '羽毛球拍', 'Yonex 88D 二代 3UG5', '9 成新', 980, users[2].city, '半年使用，无磕碰，附原装拍套。', '', 'active'],
+    [users[1].id, '求购', '羽毛球鞋', '求购 43 码稳定型羽毛球鞋', '8 成新以上', 420, users[1].city, '预算 400 左右，偏保护脚踝。', '', 'active'],
+    [users[0].id, '出售', '配件', '比赛级鹅毛球两桶', '全新', 168, users[0].city, '团购多出的两桶，支持同城面交。', '', 'active']
   ];
 
   for (const item of items) {
@@ -390,8 +390,9 @@ async function seedMarketplace(pool) {
         price,
         city,
         summary,
+        image_url,
         status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       item
     );
   }
